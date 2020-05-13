@@ -1,10 +1,32 @@
 sudo: required
 services:
     - docker
+env:
+    global:
+        - GIT_SHA=$(git rev-parse HEAD)
+        # Disable prompts from gcloud cli
+        - CLOUDSDK_CORE_DISABLE_PROMPTS=1
 before_install:
+    # Decrypt google service account
     - openssl aes-256-cbc -K $encrypted_9f3b5599b056_key -iv $encrypted_9f3b5599b056_iv -in service-account.json.enc -out service-account.json -d
-    # Install Google SDK
+    # Install Google SDK & kubectl
     - curl https://sdk.cloud.google.com | bash > /dev/null;
     - source $HOME/google-cloud-sdk/path.bash.inc
     - gcloud components update kubectl
+    # Authenticate service account & configure
     - gcloud auth activate-service-account --key-file service-account.json
+    - gcloud config set project $PROJECT_NAME
+    - gcloud config set compute/zone $COMPUTE_ZONE
+    - gcloud container clusters get-credentials $CLUSTER_NAME
+    # Log into docker
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    # Build and test
+    - docker build -t nigelfrnds/client-test -f ./client/Dockerfile.dev ./client
+script:
+    - docker run -e CI=true nigelfrnds/client-test npm run test
+deploy:
+    on:
+        branch: master
+    provider: script
+    script: bash ./deploy.sh
+    
